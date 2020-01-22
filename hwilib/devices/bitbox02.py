@@ -16,13 +16,19 @@ import re
 BITBOX02_VENDOR_ID = 0x03eb
 BITBOX02_DEVICE_ID = 0x2403
 
-class BitBox02Client(HardwareWalletClient):
+class Bitbox02Client(HardwareWalletClient):
 
-    def __init__(self, bitbox_hid, password=''):
-        super(BitBox02Client, self).__init__(bitbox_hid, password)
+    def __init__(self, path, password=''):
+        super(Bitbox02Client, self).__init__(path, password)
         hid_device = hid.device()
-        hid_device.open_path(bitbox_hid["path"])
+        hid_device.open_path(path.encode())
         hid_device.set_nonblocking(True)
+
+        bitboxes = devices.get_any_bitbox02s()
+        bitbox_hid = {}
+        for bitbox in bitboxes:
+            if bitbox["path"] == path.encode():
+                bitbox_hid = bitbox
 
         def show_pairing(code: str) -> bool:
             msg = "Please compare and confirm the pairing code on your BitBox02:" + "\n"
@@ -46,13 +52,6 @@ class BitBox02Client(HardwareWalletClient):
     # Must return a dict with the xpub
     # Retrieves the public key at the specified BIP 32 derivation path
     def get_pubkey_at_path(self, path):
-        #self.device.check_mitm()
-        #path = path.replace('h', '\'')
-        #path = path.replace('H', '\'')
-        #xpub = self.device.send_recv(CCProtocolPacker.get_xpub(path), timeout=None)
-        #if self.is_testnet:
-        #    return {'xpub': xpub_main_2_test(xpub)}
-        #else:
         return {'xpub': "lol"}
 
     # Must return a hex string with the signed transaction
@@ -67,16 +66,13 @@ class BitBox02Client(HardwareWalletClient):
     def display_address(self, keypath, p2sh_p2wpkh, bech32):
         return "lol"
 
-
-
     # Get root fingerprint of device
     def request_root_fingerprint_from_device(self):
         return self.app.root_fingerprint().hex()
 
     # Close the device
     def close(self):
-        print("LOOOOOOOOOOOL")
-        #self.dongle.close()
+        self.app.close()
 
     # Setup a new device
     def setup_device(self, label='', passphrase=''):
@@ -104,7 +100,7 @@ class BitBox02Client(HardwareWalletClient):
 
 def enumerate(password=''):
     results = []
-    for d in hid.enumerate(BITBOX02_VENDOR_ID, 0x2403):
+    for d in devices.get_any_bitbox02s():
         if ('interface_number' in d and d['interface_number'] == 0
                 or ('usage_page' in d and d['usage_page'] == 0xffa0)):
             d_data = {}
@@ -117,8 +113,7 @@ def enumerate(password=''):
 
             client = None
             with handle_errors(common_err_msgs["enumerate"], d_data):
-                bitboxes = devices.get_any_bitbox02()
-                client = BitBox02Client(bitboxes, password)
+                client = Bitbox02Client(d['path'].decode(), password)
                 d_data['fingerprint'] = client.request_root_fingerprint_from_device()
                 master_xpub = "LOL"
                 d_data['needs_pin_sent'] = False

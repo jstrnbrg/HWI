@@ -32,7 +32,6 @@ def get_client(device_type, device_path, password='', expert=False):
         if client:
             client.close()
         raise UnknownDeviceError('Unknown device type specified')
-
     return client
 
 # Get a list of all available hardware wallets
