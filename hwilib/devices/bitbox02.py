@@ -1,5 +1,5 @@
 import bitbox02
-from communication import u2fhid, devices
+from communication import u2fhid, devices, HARDENED
 from ..hwwclient import HardwareWalletClient
 from ..errors import ActionCanceledError, BadArgumentError, DeviceConnectionError, DeviceFailureError, UnavailableActionError, common_err_msgs, handle_errors
 
@@ -15,6 +15,67 @@ import re
 
 BITBOX02_VENDOR_ID = 0x03eb
 BITBOX02_DEVICE_ID = 0x2403
+BIP32_PRIME = 0x80000000
+UINT32_MAX = (1 << 32) - 1
+
+
+def check_keypath(key_path):
+    if key_path == "m/44'/0'/0'":
+        raise Exception("The path m/44' is not supported")
+    parts = re.split("/", key_path)
+    if parts[0] != "m":
+        return False
+    if parts[1] != "49'" and parts[1] != "84'":
+        return False
+    # strip hardening chars
+    for index in parts[1:]:
+        index_int = re.sub('[hH\']', '', index)
+        if not index_int.isdigit():
+            return False
+        if int(index_int) > 0x80000000:
+            return False
+    return True
+
+def convert_bip32_path_to_list_of_uint32(n):
+    """Convert bip32 path to list of uint32 integers with prime flags
+    m/0/-1/1' -> [0, 0x80000001, 0x80000001]
+
+    based on code in trezorlib
+    """
+    if not n:
+        return []
+    if n.endswith("/"):
+        n = n[:-1]
+    n = n.split('/')
+    # cut leading "m" if present, but do not require it
+    if n[0] == "m":
+        n = n[1:]
+    path = []
+    for x in n:
+        if x == '':
+            # gracefully allow repeating "/" chars in path.
+            # makes concatenating paths easier
+            continue
+        prime = 0
+        if x.endswith("'") or x.endswith("h"):
+            x = x[:-1]
+            prime = BIP32_PRIME
+        if x.startswith('-'):
+            if prime:
+                raise ValueError(f"bip32 path child index is signalling hardened level in multiple ways")
+            prime = BIP32_PRIME
+        child_index = abs(int(x)) | prime
+        if child_index > UINT32_MAX:
+            raise ValueError(f"bip32 path child index too large: {child_index} > {UINT32_MAX}")
+        path.append(child_index)
+    return path
+
+def coin_network_from_bip32_list(keypath):
+        if len(keypath) > 2:
+            if keypath[1] == 1 + HARDENED:
+                return bitbox02.btc.TBTC
+        return bitbox02.btc.BTC
+
 
 class Bitbox02Client(HardwareWalletClient):
 
@@ -52,7 +113,28 @@ class Bitbox02Client(HardwareWalletClient):
     # Must return a dict with the xpub
     # Retrieves the public key at the specified BIP 32 derivation path
     def get_pubkey_at_path(self, path):
-        return {'xpub': "lol"}
+        print(path)
+        if path == "m/44'/0'/0'":
+            path = "m/49'/0'/0'"
+        if not check_keypath(path):
+            raise Exception("Invalid keypath")
+        keypath = convert_bip32_path_to_list_of_uint32(path)
+        coin_network = coin_network_from_bip32_list(keypath)
+
+        print(path)
+        xpub = self.app.btc_pub(
+            keypath=keypath,
+            output_type=bitbox02.btc.BTCPubRequest.XPUB,
+            coin=coin_network,
+            display=False,
+        )
+        print(xpub)
+        xpub = self.app.btc_pub(
+            keypath=keypath,
+            output_type=bitbox02.btc.BTCPubRequest.XPUB,
+            coin=coin_network,
+        )
+        return {'xpub': xpub}
 
     # Must return a hex string with the signed transaction
     # The tx must be in the combined unsigned transaction format
