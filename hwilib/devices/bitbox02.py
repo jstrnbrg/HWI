@@ -146,10 +146,29 @@ class Bitbox02Client(HardwareWalletClient):
         return "lol"
 
     def sign_message(self, message, keypath):
-        return "lol"
+        raise UnailableActionError('The BitBox02 does not support message signing')
 
+    # Display address of specified type on the device. Only supports single-key based addresses.
     def display_address(self, keypath, p2sh_p2wpkh, bech32):
-        return "lol"
+        if not check_keypath(keypath):
+            raise Exception("Invalid keypath")
+        address_keypath = convert_bip32_path_to_list_of_uint32(keypath)
+        coin_network = coin_network_from_bip32_list(address_keypath)
+
+        if bech32 and address_keypath[0] == 84 + HARDENED:
+            script = bitbox02.btc.SCRIPT_P2WPKH
+        elif p2sh_p2wpkh and address_keypath[0] == 49 + HARDENED:
+            script = bitbox02.btc.SCRIPT_P2WPKH_P2SH
+        else:
+            raise Exception("invalid keypath or address_type, only supports BIP 84 p2wpkh and BIP 49 p2wpkh_p2sh")
+
+        address = self.app.btc_pub(
+            keypath=address_keypath,
+            output_type=bitbox02.btc.BTCPubRequest.ADDRESS,  # pylint: disable=no-member
+            script_type=script,
+            coin=coin_network,
+        )
+        return {'address': address}
 
     # Get root fingerprint of device
     def request_root_fingerprint_from_device(self):
