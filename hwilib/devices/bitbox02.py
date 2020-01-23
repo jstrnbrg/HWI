@@ -25,7 +25,7 @@ def check_keypath(key_path):
     parts = re.split("/", key_path)
     if parts[0] != "m":
         return False
-    if parts[1] != "49'" and parts[1] != "84'":
+    if parts[1] != "49'" and parts[1] != "49h" and parts[1] != "84'" and parts[1] != "84h":
         return False
     # strip hardening chars
     for index in parts[1:]:
@@ -109,6 +109,9 @@ class Bitbox02Client(HardwareWalletClient):
             show_pairing_callback=show_pairing,
             attestation_check_callback=attestation_check,
         )
+
+    def get_master_fingerprint(self):
+        return self.app.root_fingerprint().hex()
 
     # Must return a dict with the xpub
     # Retrieves the public key at the specified BIP 32 derivation path
@@ -196,7 +199,7 @@ def enumerate(password=''):
             client = None
             with handle_errors(common_err_msgs["enumerate"], d_data):
                 client = Bitbox02Client(d['path'].decode(), password)
-                d_data['fingerprint'] = client.request_root_fingerprint_from_device()
+                d_data['fingerprint'] = client.get_master_fingerprint()
                 master_xpub = "LOL"
                 d_data['needs_pin_sent'] = False
                 d_data['needs_passphrase_sent'] = False
