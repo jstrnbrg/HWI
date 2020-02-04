@@ -175,7 +175,7 @@ class Bitbox02Client(HardwareWalletClient):
             #    raise Exception("Invalid keypath")
             #keypath = convert_bip32_path_to_list_of_uint32(full_path)
             prevout_hash = ser_uint256(txin.prevout.hash)[::-1]
-            print("prevout hash", prevout_hash)
+            print("prevout hash", prevout_hash, "prevout hash len", len(prevout_hash))
             print("prevout index", txin.prevout.n)
             print("value", psbt_in.witness_utxo.nValue)
             print("sequence", txin.nSequence)
@@ -229,24 +229,27 @@ class Bitbox02Client(HardwareWalletClient):
                 #    raise Exception(
                 #        "Received unsupported output type during transaction signing"
                 #    )
-                print("This is the txout scriptPubkey:", txout.scriptPubKey)
+                wit, ver, prog = txout.is_witness()
+                print("This is the txout scriptPubkey:", prog, "with length", len(prog))
                 print("This is the txout value:", txout.nValue)
+
                 outputs.append(
                     bitbox02.BTCOutputExternal(
-                        output_type=bitbox02.btc.P2WPKH,
-                        output_hash=txout.scriptPubKey,
+                        output_type=bitbox02.btc.P2WSH,
+                        output_hash=prog,
                         value=txout.nValue,
                     )
                 )
 
         print("This is the locktime:", tx.tx.nLockTime)
         print("This is the version:", tx.tx.nVersion)
+        print(outputs, inputs)
         sigs = self.app.btc_sign(
             coin,
             bitbox02.btc.BTCScriptConfig(
                 simple_type=bitbox02.btc.BTCScriptConfig.P2WPKH  # pylint: disable=no-member
             ),
-            keypath_account=full_path[:3],
+            keypath_account=key_path[:3],
             inputs=inputs,
             outputs=outputs,
             locktime=tx.tx.nLockTime,
