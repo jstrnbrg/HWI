@@ -134,18 +134,11 @@ class Bitbox02Client(HardwareWalletClient):
         else:
             raise Exception("invalid keypath or address_type, only supports BIP 84 p2wpkh and BIP 49 p2wpkh_p2sh")
 
-        print(path)
         xpub = self.app.btc_pub(
             keypath=keypath,
             output_type=output_type,
             coin=coin_network,
             display=False,
-        )
-        print(xpub)
-        xpub = self.app.btc_pub(
-            keypath=keypath,
-            output_type=output_type,
-            coin=coin_network,
         )
         return {'xpub': xpub}
 
@@ -160,7 +153,8 @@ class Bitbox02Client(HardwareWalletClient):
         tx_script_type = None
         master_fp = self.get_master_fingerprint()
         master_fp = struct.unpack("<I", unhexlify(master_fp.encode()))[0]
-                # Build BTCInputType list
+
+        # Build BTCInputType list
         inputs = []
         for input_num, (psbt_in, txin) in py_enumerate(list(zip(tx.inputs, tx.tx.vin))):
 
@@ -175,11 +169,6 @@ class Bitbox02Client(HardwareWalletClient):
             #    raise Exception("Invalid keypath")
             #keypath = convert_bip32_path_to_list_of_uint32(full_path)
             prevout_hash = ser_uint256(txin.prevout.hash)[::-1]
-            print("prevout hash", prevout_hash, "prevout hash len", len(prevout_hash))
-            print("prevout index", txin.prevout.n)
-            print("value", psbt_in.witness_utxo.nValue)
-            print("sequence", txin.nSequence)
-            print("key path", key_path)
             inputs.append(
                 {
                     "prev_out_hash": prevout_hash,
@@ -205,10 +194,7 @@ class Bitbox02Client(HardwareWalletClient):
                         is_change = True
                         break
 
-
             if is_change:
-                print("This is the change keypath:", change_path)
-                print("This is the change value:", txout.nValue)
                 outputs.append(
                     bitbox02.BTCOutputInternal(
                         keypath=change_path,
@@ -216,33 +202,31 @@ class Bitbox02Client(HardwareWalletClient):
                         )
                 )
             else:
-                #addrtype, pubkey_hash = bitcoin.address_to_hash(txout.address)
-                #if addrtype == bitcoin.WIF_SCRIPT_TYPES["p2pkh"]:
-                #    output_type = bitbox02.btc.P2PKH
-                #elif addrtype == bitcoin.WIF_SCRIPT_TYPES["p2sh"]:
-                #    output_type = bitbox02.btc.P2SH
-                #elif addrtype == bitcoin.WIF_SCRIPT_TYPES["p2wpkh"]:
-                #    output_type = bitbox02.btc.P2WPKH
-                #elif addrtype == bitcoin.WIF_SCRIPT_TYPES["p2wsh"]:
-                #    output_type = bitbox02.btc.P2WSH
-                #else:
-                #    raise Exception(
-                #        "Received unsupported output type during transaction signing"
-                #    )
-                wit, ver, prog = txout.is_witness()
-                print("This is the txout scriptPubkey:", prog, "with length", len(prog))
-                print("This is the txout value:", txout.nValue)
+                if txout.is_p2pkh():
+                    output_hash = txout.scriptPubKey
+                    output_type = bitbox02.btc.P2PKH
+                elif txout.is_p2sh():
+                    output_hash = txout.scriptPubKey
+                    output_type = bitbox02.btc.P2SH
+                else:
+                    _, _, output_hash = txout.is_witness()
+                    if len(output_hash) == 20:
+                        output_type = bitbox02.btc.P2WPKH
+                    elif len(output_hash) == 32:
+                        output_type = bitbox02.btc.P2WSH
+                    else:
+                        raise BadArgumentError("No good witness program found")
+                if output_hash == None:
+                    raise BadArgumentError("Output is not an address")
 
                 outputs.append(
                     bitbox02.BTCOutputExternal(
-                        output_type=bitbox02.btc.P2WSH,
-                        output_hash=prog,
+                        output_type=output_type,
+                        output_hash=output_hash,
                         value=txout.nValue,
                     )
                 )
 
-        print("This is the locktime:", tx.tx.nLockTime)
-        print("This is the version:", tx.tx.nVersion)
         print(outputs, inputs)
         sigs = self.app.btc_sign(
             coin,
