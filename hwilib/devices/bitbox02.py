@@ -201,7 +201,7 @@ class Bitbox02Client(HardwareWalletClient):
                 if path[0] == master_fp and len(path) > 2 and path[-2] == 1:
                     # For possible matches, check if pubkey matches possible template
                     if hash160(pubkey) in txout.scriptPubKey or hash160(bytearray.fromhex("0014") + hash160(pubkey)) in txout.scriptPubKey:
-                        change_path = path[:-1]
+                        change_path = list(path[1:])
                         is_change = True
                         break
 
@@ -243,8 +243,10 @@ class Bitbox02Client(HardwareWalletClient):
         print("This is the version:", tx.tx.nVersion)
         sigs = self.app.btc_sign(
             coin,
-            bitbox02.btc.SCRIPT_P2WPKH,
-            bip44_account=full_path[2],
+            bitbox02.btc.BTCScriptConfig(
+                simple_type=bitbox02.btc.BTCScriptConfig.P2WPKH  # pylint: disable=no-member
+            ),
+            keypath_account=full_path[:3],
             inputs=inputs,
             outputs=outputs,
             locktime=tx.tx.nLockTime,
