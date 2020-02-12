@@ -1,5 +1,5 @@
-import bitbox02
-from communication import u2fhid, devices, HARDENED
+from bitbox02.communication import u2fhid, devices, HARDENED, bitbox_api_protocol
+from bitbox02 import bitbox02
 from ..hwwclient import HardwareWalletClient
 from ..errors import ActionCanceledError, BadArgumentError, DeviceConnectionError, DeviceFailureError, UnavailableActionError, common_err_msgs, handle_errors
 
@@ -20,6 +20,20 @@ BIP32_PRIME = 0x80000000
 UINT32_MAX = (1 << 32) - 1
 
 py_enumerate = enumerate # Need to use the enumerate built-in but there's another function already named that
+
+class NoiseConfig(bitbox_api_protocol.BitBoxNoiseConfig):
+    """NoiseConfig extends BitBoxNoiseConfig"""
+
+    def show_pairing(self, code: str) -> bool:
+        msg = "Please compare and confirm the pairing code on your BitBox02:" + "\n"
+        print(msg + code)
+        return True
+
+    def attestation_check(self, result: bool) -> None:
+        if result:
+            print("Device attestation PASSED")
+        else:
+            print("Device attestation FAILED")
 
 def check_keypath(key_path):
     if key_path == "m/44'/0'/0'":
@@ -93,23 +107,10 @@ class Bitbox02Client(HardwareWalletClient):
             if bitbox["path"] == path.encode():
                 bitbox_hid = bitbox
 
-        def show_pairing(code: str) -> bool:
-            msg = "Please compare and confirm the pairing code on your BitBox02:" + "\n"
-            print(msg + code)
-            return True
-
-        def attestation_check(result: bool) -> None:
-            if result:
-                print("Device attestation PASSED")
-            else:
-                print("Device attestation FAILED")
-                print(bitbox_hid)
-
         self.app = bitbox02.BitBox02(
             transport=u2fhid.U2FHid(hid_device),
             device_info=bitbox_hid,
-            show_pairing_callback=show_pairing,
-            attestation_check_callback=attestation_check,
+            noise_config=NoiseConfig(),
         )
 
     def get_master_fingerprint(self):
