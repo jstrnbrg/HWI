@@ -41,7 +41,7 @@ def check_keypath(key_path):
     parts = re.split("/", key_path)
     if parts[0] != "m":
         return False
-    if parts[1] != "49'" and parts[1] != "49h" and parts[1] != "84'" and parts[1] != "84h":
+    if parts[1] != "49'" and parts[1] != "49h" and parts[1] != "84'" and parts[1] != "84h" and parts[1] != "48'" and parts[1] != "49h":
         return False
     # strip hardening chars
     for index in parts[1:]:
@@ -119,7 +119,8 @@ class Bitbox02Client(HardwareWalletClient):
     # Must return a dict with the xpub
     # Retrieves the public key at the specified BIP 32 derivation path
     def get_pubkey_at_path(self, path):
-        print(path)
+        print("I am in the wrong function...", path)
+        # BitBox02 does not support getting the m/44' xpub, which is globally available though in HWI through getmasterxpub
         if path == "m/44'/0'/0'":
             path = "m/49'/0'/0'"
         if not check_keypath(path):
@@ -127,17 +128,17 @@ class Bitbox02Client(HardwareWalletClient):
         keypath = convert_bip32_path_to_list_of_uint32(path)
         coin_network = coin_network_from_bip32_list(keypath)
 
-        if keypath[0] == 84 + HARDENED or keypath[0] == 49 + HARDENED:
+        if keypath[0] == 84 + HARDENED or keypath[0] == 49 + HARDENED or keypath[0] == 48:
             if self.is_testnet:
-                output_type = bitbox02.btc.BTCPubRequest.TPUB
+                xpub_type = bitbox02.btc.BTCPubRequest.TPUB
             else:
-                output_type = bitbox02.btc.BTCPubRequest.XPUB
+                xpub_type = bitbox02.btc.BTCPubRequest.XPUB
         else:
             raise Exception("invalid keypath or address_type, only supports BIP 84 p2wpkh and BIP 49 p2wpkh_p2sh")
 
-        xpub = self.app.btc_pub(
+        xpub = self.app.btc_xpub(
             keypath=keypath,
-            output_type=output_type,
+            xpub_type=xpub_type,
             coin=coin_network,
             display=False,
         )
@@ -159,16 +160,12 @@ class Bitbox02Client(HardwareWalletClient):
         inputs = []
         for input_num, (psbt_in, txin) in py_enumerate(list(zip(tx.inputs, tx.tx.vin))):
 
-            #_, full_path = keystore.find_my_pubkey_in_txinout(txin)
             for key in psbt_in.hd_keypaths.keys():
                 full_path = list(psbt_in.hd_keypaths[key])
                 if full_path[0] == master_fp:
                     key_path = full_path[1:]
                     break
 
-            #if not check_keypath(full_path):
-            #    raise Exception("Invalid keypath")
-            #keypath = convert_bip32_path_to_list_of_uint32(full_path)
             prevout_hash = ser_uint256(txin.prevout.hash)[::-1]
             inputs.append(
                 {
@@ -263,17 +260,21 @@ class Bitbox02Client(HardwareWalletClient):
         coin_network = coin_network_from_bip32_list(address_keypath)
 
         if bech32 and address_keypath[0] == 84 + HARDENED:
-            script = bitbox02.btc.SCRIPT_P2WPKH
+            script_config = bitbox02.btc.BTCScriptConfig(
+                simple_type=bitbox02.btc.BTCScriptConfig.P2WPKH
+            )
         elif p2sh_p2wpkh and address_keypath[0] == 49 + HARDENED:
-            script = bitbox02.btc.SCRIPT_P2WPKH_P2SH
+            script_config = bitbox02.btc.BTCScriptConfig(
+                simple_type=bitbox02.btc.BTCScriptConfig.P2WPKH_P2SH
+            )
         else:
             raise Exception("invalid keypath or address_type, only supports BIP 84 p2wpkh bech32 addresses and BIP 49 p2wpkh_p2sh sript hash addresses")
 
-        address = self.app.btc_pub(
+        address = self.app.btc_address(
             keypath=address_keypath,
-            output_type=bitbox02.btc.BTCPubRequest.ADDRESS,  # pylint: disable=no-member
-            script_type=script,
             coin=coin_network,
+            script_config=script_config,
+            display=True,
         )
         return {'address': address}
 
@@ -291,15 +292,15 @@ class Bitbox02Client(HardwareWalletClient):
 
     # Wipe this device
     def wipe_device(self):
-        raise UnavailableActionError('The BitBox02 does not support wiping via software')
+        raise UnavailableActionError('The BitBox02 does not support wiping via software yet')
 
     # Restore device from mnemonic or xprv
     def restore_device(self, label=''):
-        raise UnavailableActionError('The BitBox02 does not support restoring via software')
+        raise UnavailableActionError('The BitBox02 does not support restoring via software yet')
 
     # Begin backup process
     def backup_device(self, label='', passphrase=''):
-        raise UnavailableActionError('The BitBox02 does not support creating a backup via software')
+        raise UnavailableActionError('The BitBox02 does not supporrt creating a backup from software yet')
 
         # Prompt pin
     def prompt_pin(self):
@@ -317,7 +318,6 @@ def enumerate(password=''):
             d_data = {}
 
             path = d['path'].decode()
-            print("This is the path", path)
             d_data['type'] = 'BitBox02'
             d_data['model'] = 'BitBox02-BTC' #if device_id == 0x0004 else 'ledger_nano_s'
             d_data['path'] = path
