@@ -252,6 +252,40 @@ class Bitbox02Client(HardwareWalletClient):
     def sign_message(self, message, keypath):
         raise UnailableActionError('The BitBox02 does not support message signing')
 
+    def btc_multisig_config(
+        self, coin: bitbox02.btc.BTCCoin, bip32_path: List[int], wallet: Multisig_Wallet
+    ) -> bitbox02.btc.BTCScriptConfig:
+        """
+        Get a mock multisig 1-of-2 multisig with the current device and some other arbitrary xpub.
+        Registers it on the device if not already registered.
+        """
+        account_keypath = bip32_path[:4]
+        xpubs = wallet.get_master_public_keys()
+        our_xpub = self.get_xpub(
+            bip32.convert_bip32_intpath_to_strpath(account_keypath), "p2wsh"
+        )
+
+        multisig_config = bitbox02.btc.BTCScriptConfig(
+            multisig=bitbox02.btc.BTCScriptConfig.Multisig(
+                threshold=wallet.m,
+                xpubs=[util.parse_xpub(xpub) for xpub in xpubs],
+                our_xpub_index=xpubs.index(our_xpub),
+            )
+        )
+
+        is_registered = self.app.btc_is_script_config_registered(
+            coin, multisig_config, account_keypath
+        )
+        if not is_registered:
+            self.app.btc_register_script_config(
+                coin=coin,
+                script_config=multisig_config,
+                keypath=account_keypath,
+                name=name,
+            )
+        return multisig_config
+
+
     # Display address of specified type on the device. Only supports single-key based addresses.
     def display_address(self, keypath, p2sh_p2wpkh, bech32):
         if not check_keypath(keypath):
