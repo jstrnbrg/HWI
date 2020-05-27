@@ -252,38 +252,38 @@ class Bitbox02Client(HardwareWalletClient):
     def sign_message(self, message, keypath):
         raise UnailableActionError('The BitBox02 does not support message signing')
 
-    def btc_multisig_config(
-        self, coin: bitbox02.btc.BTCCoin, bip32_path: List[int], wallet: Multisig_Wallet
-    ) -> bitbox02.btc.BTCScriptConfig:
-        """
-        Get a mock multisig 1-of-2 multisig with the current device and some other arbitrary xpub.
-        Registers it on the device if not already registered.
-        """
-        account_keypath = bip32_path[:4]
-        xpubs = wallet.get_master_public_keys()
-        our_xpub = self.get_xpub(
-            bip32.convert_bip32_intpath_to_strpath(account_keypath), "p2wsh"
-        )
-
-        multisig_config = bitbox02.btc.BTCScriptConfig(
-            multisig=bitbox02.btc.BTCScriptConfig.Multisig(
-                threshold=wallet.m,
-                xpubs=[util.parse_xpub(xpub) for xpub in xpubs],
-                our_xpub_index=xpubs.index(our_xpub),
-            )
-        )
-
-        is_registered = self.app.btc_is_script_config_registered(
-            coin, multisig_config, account_keypath
-        )
-        if not is_registered:
-            self.app.btc_register_script_config(
-                coin=coin,
-                script_config=multisig_config,
-                keypath=account_keypath,
-                name=name,
-            )
-        return multisig_config
+    # def btc_multisig_config(
+    #     self, coin: bitbox02.btc.BTCCoin, bip32_path: List[int], wallet: Multisig_Wallet
+    # ) -> bitbox02.btc.BTCScriptConfig:
+    #     """
+    #     Get a mock multisig 1-of-2 multisig with the current device and some other arbitrary xpub.
+    #     Registers it on the device if not already registered.
+    #     """
+    #     account_keypath = bip32_path[:4]
+    #     xpubs = wallet.get_master_public_keys()
+    #     our_xpub = self.get_xpub(
+    #         bip32.convert_bip32_intpath_to_strpath(account_keypath), "p2wsh"
+    #     )
+    #
+    #     multisig_config = bitbox02.btc.BTCScriptConfig(
+    #         multisig=bitbox02.btc.BTCScriptConfig.Multisig(
+    #             threshold=wallet.m,
+    #             xpubs=[util.parse_xpub(xpub) for xpub in xpubs],
+    #             our_xpub_index=xpubs.index(our_xpub),
+    #         )
+    #     )
+    #
+    #     is_registered = self.app.btc_is_script_config_registered(
+    #         coin, multisig_config, account_keypath
+    #     )
+    #     if not is_registered:
+    #         self.app.btc_register_script_config(
+    #             coin=coin,
+    #             script_config=multisig_config,
+    #             keypath=account_keypath,
+    #             name=name,
+    #         )
+    #     return multisig_config
 
 
     # Display address of specified type on the device. Only supports single-key based addresses.
@@ -347,25 +347,24 @@ class Bitbox02Client(HardwareWalletClient):
 def enumerate(password=''):
     results = []
     for d in devices.get_any_bitbox02s():
-        if ('interface_number' in d and d['interface_number'] == 0
-                or ('usage_page' in d and d['usage_page'] == 0xffa0)):
-            d_data = {}
+        # if ('interface_number' in d and d['interface_number'] == 0
+        #         or ('usage_page' in d and d['usage_page'] == 0xffa0)):
+        d_data = {}
+        path = d['path'].decode()
+        d_data['type'] = 'BitBox02'
+        d_data['model'] = 'BitBox02-BTC' #if device_id == 0x0004 else 'ledger_nano_s'
+        d_data['path'] = path
 
-            path = d['path'].decode()
-            d_data['type'] = 'BitBox02'
-            d_data['model'] = 'BitBox02-BTC' #if device_id == 0x0004 else 'ledger_nano_s'
-            d_data['path'] = path
+        client = None
+        with handle_errors(common_err_msgs["enumerate"], d_data):
+            client = Bitbox02Client(d['path'].decode(), password)
+            d_data['fingerprint'] = client.get_master_fingerprint()
+            master_xpub = "LOL"
+            d_data['needs_pin_sent'] = False
+            d_data['needs_passphrase_sent'] = False
 
-            client = None
-            with handle_errors(common_err_msgs["enumerate"], d_data):
-                client = Bitbox02Client(d['path'].decode(), password)
-                d_data['fingerprint'] = client.get_master_fingerprint()
-                master_xpub = "LOL"
-                d_data['needs_pin_sent'] = False
-                d_data['needs_passphrase_sent'] = False
+        if client:
+            client.close()
 
-            if client:
-                client.close()
-
-            results.append(d_data)
+        results.append(d_data)
     return results
