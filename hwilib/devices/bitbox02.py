@@ -12,6 +12,7 @@ from ..base58 import get_xpub_fingerprint_hex
 from ..serializations import hash256, hash160, CTransaction, CTxOut, ser_uint256
 import logging
 import re
+from typing import Callable, List
 
 
 BITBOX02_VENDOR_ID = 0x03eb
@@ -24,9 +25,11 @@ py_enumerate = enumerate # Need to use the enumerate built-in but there's anothe
 class NoiseConfig(bitbox_api_protocol.BitBoxNoiseConfig):
     """NoiseConfig extends BitBoxNoiseConfig"""
 
-    def show_pairing(self, code: str) -> bool:
+    def show_pairing(self, code: str, device_response: Callable[[], bool]) -> bool:
         msg = "Please compare and confirm the pairing code on your BitBox02:" + "\n"
         print(msg + code)
+        if not device_response():
+                return False
         return True
 
     def attestation_check(self, result: bool) -> None:
@@ -92,11 +95,11 @@ def coin_network_from_bip32_list(keypath):
                 return bitbox02.btc.TBTC
         return bitbox02.btc.BTC
 
-
 class Bitbox02Client(HardwareWalletClient):
 
-    def __init__(self, path, password=''):
-        super(Bitbox02Client, self).__init__(path, password)
+    def __init__(self, path, password='', expert=False):
+        super(Bitbox02Client, self).__init__(path, password, expert)
+
         hid_device = hid.device()
         hid_device.open_path(path.encode())
         hid_device.set_nonblocking(True)
@@ -292,7 +295,6 @@ class Bitbox02Client(HardwareWalletClient):
             raise Exception("Invalid keypath")
         address_keypath = convert_bip32_path_to_list_of_uint32(keypath)
         coin_network = coin_network_from_bip32_list(address_keypath)
-
         if bech32 and address_keypath[0] == 84 + HARDENED:
             script_config = bitbox02.btc.BTCScriptConfig(
                 simple_type=bitbox02.btc.BTCScriptConfig.P2WPKH
@@ -347,19 +349,21 @@ class Bitbox02Client(HardwareWalletClient):
 def enumerate(password=''):
     results = []
     for d in devices.get_any_bitbox02s():
+        # TODO:  why did seb use that if statement?
         # if ('interface_number' in d and d['interface_number'] == 0
         #         or ('usage_page' in d and d['usage_page'] == 0xffa0)):
+        print(d)
         d_data = {}
         path = d['path'].decode()
-        d_data['type'] = 'BitBox02'
-        d_data['model'] = 'BitBox02-BTC' #if device_id == 0x0004 else 'ledger_nano_s'
+        d_data['type'] = "BitBox02"
+        d_data['model'] = d['product_string']
         d_data['path'] = path
 
         client = None
         with handle_errors(common_err_msgs["enumerate"], d_data):
             client = Bitbox02Client(d['path'].decode(), password)
             d_data['fingerprint'] = client.get_master_fingerprint()
-            master_xpub = "LOL"
+            # master_xpub = "LOL"
             d_data['needs_pin_sent'] = False
             d_data['needs_passphrase_sent'] = False
 
