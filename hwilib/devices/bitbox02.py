@@ -339,6 +339,15 @@ class Bitbox02Client(HardwareWalletClient):
     def send_pin(self, pin):
         raise UnavailableActionError('The BitBox02 does not need a PIN sent from the host')
 
+    # Toggle passhrase
+    def toggle_passphrase(self):
+        device_info = self.app.device_info()
+        passphrase_status = device_info['mnemonic_passphrase_enabled']
+        if passphrase_status:
+            return self.app.disable_mnemonic_passphrase()
+        else:
+            return self.app.enable_mnemonic_passphrase()
+
 def enumerate(password=''):
     results = []
     for d in devices.get_any_bitbox02s():
