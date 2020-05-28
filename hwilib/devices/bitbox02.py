@@ -9,7 +9,7 @@ import hid
 import struct
 from .. import base58
 from ..base58 import get_xpub_fingerprint_hex
-from ..serializations import hash256, hash160, CTransaction, CTxOut, ser_uint256
+from ..serializations import hash256, hash160, CTransaction, CTxOut, ser_uint256, ExtendedKey
 import logging
 import re
 from typing import Callable, List
@@ -122,30 +122,23 @@ class Bitbox02Client(HardwareWalletClient):
     # Must return a dict with the xpub
     # Retrieves the public key at the specified BIP 32 derivation path
     def get_pubkey_at_path(self, path):
-        print("I am in the wrong function...", path)
-        # BitBox02 does not support getting the m/44' xpub, which is globally available though in HWI through getmasterxpub
-        if path == "m/44'/0'/0'":
-            path = "m/49'/0'/0'"
         if not check_keypath(path):
-            raise Exception("Invalid keypath")
+            raise Exception("The entered keypath is invalid. Note: The BitBox02 only supports BIP 84 p2wpkh and BIP 49 p2wpkh_p2sh.")
         keypath = convert_bip32_path_to_list_of_uint32(path)
         coin_network = coin_network_from_bip32_list(keypath)
-
-        if keypath[0] == 84 + HARDENED or keypath[0] == 49 + HARDENED or keypath[0] == 48:
-            if self.is_testnet:
-                xpub_type = bitbox02.btc.BTCPubRequest.TPUB
-            else:
-                xpub_type = bitbox02.btc.BTCPubRequest.XPUB
-        else:
-            raise Exception("invalid keypath or address_type, only supports BIP 84 p2wpkh and BIP 49 p2wpkh_p2sh")
-
+        xpub_type = bitbox02.btc.BTCPubRequest.TPUB if self.is_testnet else bitbox02.btc.BTCPubRequest.XPUB
         xpub = self.app.btc_xpub(
             keypath=keypath,
             xpub_type=xpub_type,
             coin=coin_network,
-            display=False,
+            display=True,
         )
-        return {'xpub': xpub}
+        result = {'xpub': xpub}
+        if self.expert:
+            xpub_obj = ExtendedKey()
+            xpub_obj.deserialize(xpub)
+            result.update(xpub_obj.get_printable_dict())
+        return result
 
     # Must return a hex string with the signed transaction
     # The tx must be in the combined unsigned transaction format
