@@ -122,6 +122,8 @@ class Bitbox02Client(HardwareWalletClient):
     # Must return a dict with the xpub
     # Retrieves the public key at the specified BIP 32 derivation path
     def get_pubkey_at_path(self, path):
+        # QUESTION: As BB02 does not support m/44'/0'/0' which is used by `getmasterxpub` should it convert to m/44'/0'/0' or return error ?
+        # path = "m/49'/0'/0'" if path == "m/44'/0'/0'" else path
         if not check_keypath(path):
             raise Exception("The entered keypath is invalid. Note: The BitBox02 only supports BIP 84 p2wpkh and BIP 49 p2wpkh_p2sh.")
         keypath = convert_bip32_path_to_list_of_uint32(path)
