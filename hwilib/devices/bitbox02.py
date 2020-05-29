@@ -1,5 +1,5 @@
 from bitbox02.communication import u2fhid, devices, HARDENED, bitbox_api_protocol
-from bitbox02 import bitbox02
+from bitbox02 import bitbox02, util
 from ..hwwclient import HardwareWalletClient
 from ..errors import ActionCanceledError, BadArgumentError, DeviceConnectionError, DeviceFailureError, UnavailableActionError, common_err_msgs, handle_errors
 
@@ -22,7 +22,7 @@ UINT32_MAX = (1 << 32) - 1
 
 py_enumerate = enumerate # Need to use the enumerate built-in but there's another function already named that
 
-class NoiseConfig(bitbox_api_protocol.BitBoxNoiseConfig):
+class NoiseConfig(util.NoiseConfigUserCache):
     """NoiseConfig extends BitBoxNoiseConfig"""
 
     def show_pairing(self, code: str, device_response: Callable[[], bool]) -> bool:
@@ -100,6 +100,7 @@ class Bitbox02Client(HardwareWalletClient):
     def __init__(self, path, password='', expert=False):
         super(Bitbox02Client, self).__init__(path, password, expert)
 
+        APP_ID = "HWI"
         hid_device = hid.device()
         hid_device.open_path(path.encode())
         hid_device.set_nonblocking(True)
@@ -113,7 +114,7 @@ class Bitbox02Client(HardwareWalletClient):
         self.app = bitbox02.BitBox02(
             transport=u2fhid.U2FHid(hid_device),
             device_info=bitbox_hid,
-            noise_config=NoiseConfig(),
+            noise_config=NoiseConfig(APP_ID),
         )
 
     def get_master_fingerprint(self):
