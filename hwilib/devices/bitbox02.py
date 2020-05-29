@@ -95,6 +95,17 @@ def coin_network_from_bip32_list(keypath):
                 return bitbox02.btc.TBTC
         return bitbox02.btc.BTC
 
+def get_xpub_type(self, path):
+    script_type = path.split("/")[1]
+    if self.is_testnet:
+        return bitbox02.btc.BTCPubRequest.TPUB
+    elif "49" in script_type:
+        return bitbox02.btc.BTCPubRequest.YPUB
+    elif "84" in script_type:
+        return bitbox02.btc.BTCPubRequest.ZPUB
+    else:
+        return bitbox02.btc.BTCPubRequest.XPUB
+
 class Bitbox02Client(HardwareWalletClient):
 
     def __init__(self, path, password='', expert=False):
@@ -129,7 +140,7 @@ class Bitbox02Client(HardwareWalletClient):
             raise Exception("The entered keypath is invalid. Note: The BitBox02 only supports BIP 84 p2wpkh and BIP 49 p2wpkh_p2sh.")
         keypath = convert_bip32_path_to_list_of_uint32(path)
         coin_network = coin_network_from_bip32_list(keypath)
-        xpub_type = bitbox02.btc.BTCPubRequest.TPUB if self.is_testnet else bitbox02.btc.BTCPubRequest.XPUB
+        xpub_type = get_xpub_type(self, path)
         xpub = self.app.btc_xpub(
             keypath=keypath,
             xpub_type=xpub_type,
