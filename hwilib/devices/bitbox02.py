@@ -2,17 +2,20 @@ from bitbox02.communication import u2fhid, devices, HARDENED, bitbox_api_protoco
 from bitbox02 import bitbox02, util
 from ..hwwclient import HardwareWalletClient
 from ..errors import ActionCanceledError, BadArgumentError, DeviceConnectionError, DeviceFailureError, UnavailableActionError, common_err_msgs, handle_errors
+from .bb02.noise import NoiseConfig
+from .bb02.utils import *
 
-import base64
+
 from binascii import hexlify, unhexlify
 import hid
 import struct
+from typing import List
 from .. import base58
 from ..base58 import get_xpub_fingerprint_hex
 from ..serializations import hash256, hash160, CTransaction, CTxOut, ser_uint256, ExtendedKey
-import logging
-import re
-from typing import Callable, List
+# import logging
+# import re
+# import base64
 
 
 BITBOX02_VENDOR_ID = 0x03eb
@@ -21,90 +24,6 @@ BIP32_PRIME = 0x80000000
 UINT32_MAX = (1 << 32) - 1
 
 py_enumerate = enumerate # Need to use the enumerate built-in but there's another function already named that
-
-class NoiseConfig(util.NoiseConfigUserCache):
-    """NoiseConfig extends BitBoxNoiseConfig"""
-
-    def show_pairing(self, code: str, device_response: Callable[[], bool]) -> bool:
-        msg = "Please compare and confirm the pairing code on your BitBox02:" + "\n"
-        print(msg + code)
-        if not device_response():
-                return False
-        return True
-
-    def attestation_check(self, result: bool) -> None:
-        if result:
-            print("Device attestation PASSED")
-        else:
-            print("Device attestation FAILED")
-
-def check_keypath(key_path):
-    if key_path == "m/44'/0'/0'":
-        raise Exception("The path m/44' is not supported")
-    parts = re.split("/", key_path)
-    if parts[0] != "m":
-        return False
-    if parts[1] != "49'" and parts[1] != "49h" and parts[1] != "84'" and parts[1] != "84h" and parts[1] != "48'" and parts[1] != "49h":
-        return False
-    # strip hardening chars
-    for index in parts[1:]:
-        index_int = re.sub('[hH\']', '', index)
-        if not index_int.isdigit():
-            return False
-        if int(index_int) > 0x80000000:
-            return False
-    return True
-
-def convert_bip32_path_to_list_of_uint32(n):
-    """Convert bip32 path to list of uint32 integers with prime flags
-    m/0/-1/1' -> [0, 0x80000001, 0x80000001]
-
-    based on code in trezorlib
-    """
-    if not n:
-        return []
-    if n.endswith("/"):
-        n = n[:-1]
-    n = n.split('/')
-    # cut leading "m" if present, but do not require it
-    if n[0] == "m":
-        n = n[1:]
-    path = []
-    for x in n:
-        if x == '':
-            # gracefully allow repeating "/" chars in path.
-            # makes concatenating paths easier
-            continue
-        prime = 0
-        if x.endswith("'") or x.endswith("h"):
-            x = x[:-1]
-            prime = BIP32_PRIME
-        if x.startswith('-'):
-            if prime:
-                raise ValueError(f"bip32 path child index is signalling hardened level in multiple ways")
-            prime = BIP32_PRIME
-        child_index = abs(int(x)) | prime
-        if child_index > UINT32_MAX:
-            raise ValueError(f"bip32 path child index too large: {child_index} > {UINT32_MAX}")
-        path.append(child_index)
-    return path
-
-def coin_network_from_bip32_list(keypath):
-        if len(keypath) > 2:
-            if keypath[1] == 1 + HARDENED:
-                return bitbox02.btc.TBTC
-        return bitbox02.btc.BTC
-
-def get_xpub_type(self, path):
-    script_type = path.split("/")[1]
-    if self.is_testnet:
-        return bitbox02.btc.BTCPubRequest.TPUB
-    elif "49" in script_type:
-        return bitbox02.btc.BTCPubRequest.YPUB
-    elif "84" in script_type:
-        return bitbox02.btc.BTCPubRequest.ZPUB
-    else:
-        return bitbox02.btc.BTCPubRequest.XPUB
 
 class Bitbox02Client(HardwareWalletClient):
 
@@ -312,7 +231,6 @@ class Bitbox02Client(HardwareWalletClient):
             )
         else:
             raise Exception("invalid keypath or address_type, only supports BIP 84 p2wpkh bech32 addresses and BIP 49 p2wpkh_p2sh sript hash addresses")
-
         address = self.app.btc_address(
             keypath=address_keypath,
             coin=coin_network,
