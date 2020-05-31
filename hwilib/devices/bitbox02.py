@@ -11,11 +11,12 @@ import hid
 import struct
 from typing import List
 from .. import base58
-from ..base58 import get_xpub_fingerprint_hex
-from ..serializations import hash256, hash160, CTransaction, CTxOut, ser_uint256, ExtendedKey
+from ..base58 import get_xpub_fingerprint_hex, to_address
+from ..serializations import hash256, hash160, CTransaction, CTxOut, ser_uint256, ExtendedKey, PSBT
 # import logging
 # import re
 # import base64
+from pprint import pprint
 
 
 BITBOX02_VENDOR_ID = 0x03eb
@@ -57,7 +58,7 @@ class Bitbox02Client(HardwareWalletClient):
         # path = "m/49'/0'/0'" if path == "m/44'/0'/0'" else path
         if not check_keypath(path):
             raise Exception("The entered keypath is invalid. Note: The BitBox02 only supports BIP 84 p2wpkh and BIP 49 p2wpkh_p2sh.")
-        keypath = convert_bip32_path_to_list_of_uint32(path)
+        keypath = convert_bip32_path_to_list_of_uint32(path)[:3]
         coin_network = coin_network_from_bip32_list(keypath)
         xpub_type = get_xpub_type(self, path)
         xpub = self.app.btc_xpub(
@@ -75,7 +76,7 @@ class Bitbox02Client(HardwareWalletClient):
 
     # Must return a hex string with the signed transaction
     # The tx must be in the combined unsigned transaction format
-    # Current only supports segwit signing
+    #Current only supports segwit signing
     def sign_tx(self, tx):
         coin = bitbox02.btc.BTC
         if self.is_testnet:
@@ -84,25 +85,41 @@ class Bitbox02Client(HardwareWalletClient):
         tx_script_type = None
         master_fp = self.get_master_fingerprint()
         master_fp = struct.unpack("<I", unhexlify(master_fp.encode()))[0]
-
         # Build BTCInputType list
         inputs = []
+        key_path = []
         for input_num, (psbt_in, txin) in py_enumerate(list(zip(tx.inputs, tx.tx.vin))):
-
             for key in psbt_in.hd_keypaths.keys():
                 full_path = list(psbt_in.hd_keypaths[key])
-                if full_path[0] == master_fp:
+                key_path = full_path[1:] # added by jo just to populate key_path for now
+
+                # QUESTION: Why compare master_fp with full_path[0] ?
+                if full_path[0] == master_fp: # always fails
                     key_path = full_path[1:]
                     break
+
+            # QUESTION: BB02 does not support signing non-witness inputs? If true, how to handle?
+            if psbt_in.non_witness_utxo:
+                bb02_amount = psbt_in.non_witness_utxo.vout[txin.prevout.n].nValue
+            elif psbt_in.witness_utxo:
+                if psbt_in.witness_utxo.is_p2sh():
+                    script_type = bitbox02.btc.BTCScriptConfig(
+                        simple_type=bitbox02.btc.BTCScriptConfig.P2WPKH_P2SH
+                    )
+                else:
+                    script_type = bitbox02.btc.BTCScriptConfig(
+                        simple_type=bitbox02.btc.BTCScriptConfig.P2WPKH
+                    )
+                prev_out_value = psbt_in.witness_utxo.nValue
 
             prevout_hash = ser_uint256(txin.prevout.hash)[::-1]
             inputs.append(
                 {
                     "prev_out_hash": prevout_hash,
                     "prev_out_index": txin.prevout.n,
-                    "prev_out_value": psbt_in.witness_utxo.nValue,
+                    "prev_out_value": prev_out_value,
                     "sequence": txin.nSequence,
-                    "keypath": key_path,
+                    "keypath": [84 + HARDENED] + key_path,
                 }
             )
 
@@ -154,17 +171,19 @@ class Bitbox02Client(HardwareWalletClient):
                     )
                 )
 
-        print(outputs, inputs)
+        keypath = [84 + HARDENED] + key_path
+        print("INPUTS: ", inputs)
+        print("OUTPUTS: ", outputs)
+        print("COIN: ", coin)
+        print("SCRIPTYPE: ", script_type)
+        print("KEYPATH: ", keypath)
+
         sigs = self.app.btc_sign(
             coin,
-            bitbox02.btc.BTCScriptConfig(
-                simple_type=bitbox02.btc.BTCScriptConfig.P2WPKH  # pylint: disable=no-member
-            ),
-            keypath_account=key_path[:3],
+            script_type,
+            keypath_account=keypath, #key_path[:3],
             inputs=inputs,
             outputs=outputs,
-            locktime=tx.tx.nLockTime,
-            version=tx.tx.nVersion,
         )
 
         # Fill signatures
